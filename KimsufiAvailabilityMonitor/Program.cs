@@ -89,9 +89,9 @@
                 }
                 catch (HttpRequestException exception)
                 {
-                    Logger.Error("An error occurred while executing the HTTP request.");
+                    var exceptionId = LogException(exception);
 
-                    LogException(exception);
+                    Logger.Error("An error occurred while executing the HTTP request ({0}).", exceptionId);
 
                     return;
                 }
@@ -108,9 +108,18 @@
                 Logger.Debug(CultureInfo.InvariantCulture, "HTTP request took {0:D} ms.", stopwatch.ElapsedMilliseconds);
                 Logger.Trace("HTTP request content read started.");
 
+                if (!httpResponseMessage.IsSuccessStatusCode)
+                {
+                    Logger.Error("HTTP request failed: {0}", httpResponseMessage.ReasonPhrase);
+
+                    return;
+                }
+
                 Response response;
 
                 var serializer = new JsonSerializer();
+
+                serializer.Error += OnDeserializationError;
 
                 using (var stream = await httpResponseMessage.Content.ReadAsStreamAsync())
                 {
@@ -130,6 +139,13 @@
                             Logger.Debug("JSON deserialization took {0:D} ms.", stopwatch.ElapsedMilliseconds);
                         }
                     }
+                }
+
+                if (response.Error != null)
+                {
+                    Logger.Error("API query failed: {0}", response.Error);
+
+                    return;
                 }
 
                 Logger.Trace("Availability check started.");
@@ -155,6 +171,23 @@
             }
 
             Logger.Trace("Callback completed.");
+        }
+
+        private static void OnDeserializationError(object sender, Newtonsoft.Json.Serialization.ErrorEventArgs e)
+        {
+            Logger.Trace("JSON deserialization error handler started.");
+
+            if (e.CurrentObject != e.ErrorContext.OriginalObject)
+            {
+                Logger.Trace("Deserialization error is propagating, skipping handling.");
+
+                return;
+            }
+
+            var exceptionId = LogException(e.ErrorContext.Error);
+
+            Logger.Error("JSON deserialization failed ({0}).", exceptionId);
+            Logger.Trace("JSON deserialization error handler completed.");
         }
 
         private static void NotifyAvailability()
@@ -209,31 +242,20 @@
 
         private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
-            var id = CreateExceptionId();
             var exception = (Exception) e.ExceptionObject;
+            var exceptionId = LogException(exception);
 
-            Logger.Fatal("Unhandled exception ({0})", id);
-
-            LogException(exception, id);
+            Logger.Fatal("Unhandled exception ({0})", exceptionId);
         }
 
-        private static string CreateExceptionId()
+        private static string LogException(Exception exception)
         {
-            return Guid.NewGuid().ToString("D", CultureInfo.InvariantCulture);
-        }
-
-        private static void LogException(Exception exception)
-        {
-            var id = CreateExceptionId();
-
-            LogException(exception, id);
-        }
-
-        private static void LogException(Exception exception, string id)
-        {
+            var id = Guid.NewGuid().ToString("D", CultureInfo.InvariantCulture);
             var message = FormatException(exception, id);
 
             LogManager.GetLogger("exceptions").Fatal(message);
+
+            return id;
         }
 
         private static string FormatException(Exception exception, string id)
