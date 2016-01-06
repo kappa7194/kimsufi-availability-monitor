@@ -35,10 +35,12 @@
 
             using (var httpClient = new HttpClient())
             {
+                httpClient.Timeout = TimeSpan.FromSeconds(Configuration.Default.ApiTimeout);
+
                 Logger.Trace("HTTP client started.");
                 Logger.Trace("Timer starting.");
 
-                using (var timer = new System.Threading.Timer(CallbackAsync, httpClient, 0, 10000))
+                using (var timer = new System.Threading.Timer(CallbackAsync, httpClient, 0, Configuration.Default.CheckPeriod))
                 {
                     Logger.Trace("Timer started.");
                     Logger.Info("Application started.");
@@ -85,7 +87,7 @@
 
                 try
                 {
-                    httpResponseMessage = await httpClient.GetAsync("https://ws.ovh.com/dedicated/r2/ws.dispatcher/getAvailability2", CancellationSource.Token);
+                    httpResponseMessage = await httpClient.GetAsync(Configuration.Default.ApiEndpoint, CancellationSource.Token);
                 }
                 catch (HttpRequestException exception)
                 {
@@ -150,7 +152,7 @@
 
                 Logger.Trace("Availability check started.");
 
-                var isAvailable = response.Answer.Availabilities.Single(a => a.Reference == "150sk30").Zones.Any(a => a.Availability != "unknown" && a.Availability != "unavailable");
+                var isAvailable = response.Answer.Availabilities.Single(a => a.Reference == Configuration.Default.ServerSku).Zones.Any(a => a.Availability != "unknown" && a.Availability != "unavailable");
 
                 Logger.Trace("Availability check completed.");
 
