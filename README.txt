@@ -26,6 +26,13 @@ Compress the Logs directory and attach it to the issue.
 https://github.com/kappa7194/kimsufi-availability-monitor/issues
 
 
+LICENSE
+
+This application is licensed under the MIT License.
+
+https://tldrlegal.com/license/mit-license
+
+
 KIMSUFI API ENDPOINT
 
 https://ws.ovh.com/dedicated/r2/ws.dispatcher/getAvailability2
