@@ -14,7 +14,7 @@
     public static class Program
     {
         private readonly static CancellationTokenSource CancellationSource = new CancellationTokenSource();
-        private readonly static object SynchronizationRoot = new object();
+        private readonly static object SynchronizationToken = new object();
 
         private static bool dialogIsOpen;
 
@@ -58,7 +58,7 @@
 
         private static void NotifyAvailability()
         {
-            lock (SynchronizationRoot)
+            lock (SynchronizationToken)
             {
                 if (dialogIsOpen)
                 {
@@ -75,7 +75,7 @@
         {
             MessageBox.Show("text", "caption", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-            lock (SynchronizationRoot)
+            lock (SynchronizationToken)
             {
                 dialogIsOpen = false;
             }
