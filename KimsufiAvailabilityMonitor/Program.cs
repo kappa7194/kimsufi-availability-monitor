@@ -150,7 +150,7 @@
 
                 Logger.Trace("Availability check started.");
 
-                var isAvailable = response.Answer.Availabilities.Single(a => a.Reference == "150sk30").Zones.Any(a => a.Availability != "unknown");
+                var isAvailable = response.Answer.Availabilities.Single(a => a.Reference == "150sk30").Zones.Any(a => a.Availability != "unknown" && a.Availability != "unavailable");
 
                 Logger.Trace("Availability check completed.");
 
