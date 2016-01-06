@@ -6,6 +6,7 @@
     using System.IO;
     using System.Linq;
     using System.Net.Http;
+    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
     using System.Windows.Forms;
@@ -27,6 +28,8 @@
         [STAThread]
         public static void Main()
         {
+            AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+
             Logger.Trace("Application starting.");
             Logger.Trace("HTTP client starting.");
 
@@ -84,9 +87,11 @@
                 {
                     httpResponseMessage = await httpClient.GetAsync("https://ws.ovh.com/dedicated/r2/ws.dispatcher/getAvailability2", CancellationSource.Token);
                 }
-                catch (HttpRequestException)
+                catch (HttpRequestException exception)
                 {
                     Logger.Error("An error occurred while executing the HTTP request.");
+
+                    LogException(exception);
 
                     return;
                 }
@@ -200,6 +205,62 @@
             Logger.Trace("Dialog display completed.");
 
             return Task.CompletedTask;
+        }
+
+        private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
+        {
+            var id = CreateExceptionId();
+            var exception = (Exception) e.ExceptionObject;
+
+            Logger.Fatal("Unhandled exception ({0})", id);
+
+            LogException(exception, id);
+        }
+
+        private static string CreateExceptionId()
+        {
+            return Guid.NewGuid().ToString("D", CultureInfo.InvariantCulture);
+        }
+
+        private static void LogException(Exception exception)
+        {
+            var id = CreateExceptionId();
+
+            LogException(exception, id);
+        }
+
+        private static void LogException(Exception exception, string id)
+        {
+            var message = FormatException(exception, id);
+
+            LogManager.GetLogger("exceptions").Fatal(message);
+        }
+
+        private static string FormatException(Exception exception, string id)
+        {
+            var moment = DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture);
+            var stringBuilder = new StringBuilder();
+
+            stringBuilder.AppendLine(id);
+            stringBuilder.AppendLine(moment);
+
+            FormatException(stringBuilder, exception);
+
+            return stringBuilder.ToString();
+        }
+
+        private static void FormatException(StringBuilder stringBuilder, Exception exception)
+        {
+            var type = exception.GetType();
+
+            stringBuilder.AppendLine(type.FullName);
+            stringBuilder.AppendLine(exception.Message);
+            stringBuilder.AppendLine(exception.StackTrace);
+
+            if (exception.InnerException != null)
+            {
+                FormatException(stringBuilder, exception.InnerException);
+            }
         }
     }
 }
