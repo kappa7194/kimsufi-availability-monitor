@@ -69,6 +69,10 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ApiEntities\Answer.cs" />
+    <Compile Include="ApiEntities\Availability.cs" />
+    <Compile Include="ApiEntities\Response.cs" />
+    <Compile Include="ApiEntities\Zone.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
