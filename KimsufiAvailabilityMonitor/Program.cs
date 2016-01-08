@@ -2,6 +2,7 @@
 {
     using System;
     using System.Diagnostics;
+    using System.Drawing;
     using System.Globalization;
     using System.IO;
     using System.Linq;
@@ -222,7 +223,17 @@
         {
             Logger.Trace("Dialog display started.");
 
-            MessageBox.Show("Server is available.", "Kimsufi Availability Monitor", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            using (var form = new Form())
+            {
+                form.Location = new Point(SystemInformation.VirtualScreen.Bottom + 10, SystemInformation.VirtualScreen.Right + 10);
+                form.Size = new Size(1, 1);
+                form.StartPosition = FormStartPosition.Manual;
+
+                form.Show();
+                form.Activate();
+
+                MessageBox.Show(form, "Server is available.", "Kimsufi Availability Monitor", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
 
             Logger.Trace("User acknowledged dialog.");
             Logger.Trace("Synchronization lock acquiring.");
