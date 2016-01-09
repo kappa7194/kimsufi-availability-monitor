@@ -242,7 +242,8 @@
 
             if (!IsMessageGatewayConfigured())
             {
-                Logger.Error("Message gateway not configured.");
+                Logger.Debug("Message gateway not configured.");
+                Logger.Trace("Message sending aborted.");
 
                 return;
             }
