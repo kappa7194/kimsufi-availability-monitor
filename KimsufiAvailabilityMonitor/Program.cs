@@ -18,6 +18,8 @@
 
     using NLog;
 
+    using Twilio;
+
     public static class Program
     {
         private readonly static CancellationTokenSource CancellationSource = new CancellationTokenSource();
@@ -228,12 +230,51 @@
         {
             Logger.Trace("Availability notification started.");
 
-            Task.Run(DisplayDialog);
+            Task.Run(() => SendMessage());
+            Task.Run(() => DisplayDialog());
 
             Logger.Trace("Availability notification completed.");
         }
 
-        private static Task DisplayDialog()
+        private static void SendMessage()
+        {
+            Logger.Trace("Message sending started.");
+
+            if (!IsMessageGatewayConfigured())
+            {
+                Logger.Error("Message gateway not configured.");
+
+                return;
+            }
+
+            var twilioClient = new TwilioRestClient(Configuration.Default.TwilioAccountSid, Configuration.Default.TwilioAuthToken);
+
+            var message = twilioClient.SendMessage(Configuration.Default.TwilioSenderNumber, Configuration.Default.TwilioRecipientNumber, "Server available.");
+
+            if (message.RestException != null)
+            {
+                Logger.Error("Message sending failed: {0} {1}", message.RestException.Code, message.RestException.Message);
+            }
+            else if (message.ErrorCode != null || message.ErrorMessage != null)
+            {
+                Logger.Error("Message sending failed: {0} {1}", message.ErrorCode, message.ErrorMessage);
+            }
+            else
+            {
+                Logger.Trace("Message sending completed.");
+            }
+        }
+
+        private static bool IsMessageGatewayConfigured()
+        {
+            return
+                !string.IsNullOrWhiteSpace(Configuration.Default.TwilioAccountSid)
+                && !string.IsNullOrWhiteSpace(Configuration.Default.TwilioAuthToken)
+                && !string.IsNullOrWhiteSpace(Configuration.Default.TwilioSenderNumber)
+                && !string.IsNullOrWhiteSpace(Configuration.Default.TwilioRecipientNumber);
+        }
+
+        private static void DisplayDialog()
         {
             Logger.Trace("Dialog display started.");
 
@@ -243,7 +284,7 @@
                 {
                     Logger.Trace("Dialog already displaying.");
 
-                    return Task.CompletedTask;
+                    return;
                 }
 
                 dialogIsOpen = true;
@@ -271,8 +312,6 @@
             }
 
             Logger.Trace("Dialog display completed.");
-
-            return Task.CompletedTask;
         }
 
         private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
