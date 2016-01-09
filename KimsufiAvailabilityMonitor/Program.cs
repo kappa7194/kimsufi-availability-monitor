@@ -74,51 +74,40 @@
 
         private static async void CallbackAsync(object state)
         {
-            Logger.Trace("Callback started.");
+            Logger.Trace("Timer callback started.");
 
-            var httpClient = (HttpClient) state;
+            var response = await QueryApiAsync((HttpClient) state);
 
-            Logger.Trace("HTTP request started.");
+            if (response == null)
+            {
+                Logger.Error("Timer callback failed.");
+
+                return;
+            }
+
+            CheckAvailability(response);
+
+            Logger.Trace("Timer callback completed.");
+        }
+
+        private static async Task<Response> QueryApiAsync(HttpClient httpClient)
+        {
+            Logger.Trace("API query started.");
 
             HttpResponseMessage httpResponseMessage = null;
 
             try
             {
-                var stopwatch = Stopwatch.StartNew();
+                httpResponseMessage = await ExecuteApiCallAsync(httpClient);
 
-                try
+                if (httpResponseMessage == null)
                 {
-                    httpResponseMessage = await httpClient.GetAsync(Configuration.Default.ApiEndpoint, CancellationSource.Token);
-                }
-                catch (HttpRequestException exception)
-                {
-                    var exceptionId = LogException(exception);
+                    Logger.Trace("API query failed.");
 
-                    Logger.Error("An error occurred while executing the HTTP request ({0}).", exceptionId);
-
-                    return;
-                }
-                catch (TaskCanceledException)
-                {
-                    Logger.Info("The HTTP request has been cancelled due to either a timeout or an application shutdown request.");
-
-                    return;
+                    return null;
                 }
 
-                stopwatch.Stop();
-
-                Logger.Trace("HTTP request completed.");
-                Logger.Debug(CultureInfo.InvariantCulture, "HTTP request took {0:D} ms.", stopwatch.ElapsedMilliseconds);
-                Logger.Trace("HTTP request content read started.");
-
-                if (!httpResponseMessage.IsSuccessStatusCode)
-                {
-                    Logger.Error("HTTP request failed: {0}", httpResponseMessage.ReasonPhrase);
-
-                    return;
-                }
-
-                Response response;
+                Logger.Trace("API response deserialization started.");
 
                 var serializer = new JsonSerializer();
 
@@ -130,50 +119,68 @@
                     {
                         using (var jsonTextReader = new JsonTextReader(streamReader))
                         {
-                            Logger.Trace("JSON deserialization started.");
-
-                            stopwatch.Restart();
-
-                            response = serializer.Deserialize<Response>(jsonTextReader);
+                            var stopwatch = Stopwatch.StartNew();
+                            var response = serializer.Deserialize<Response>(jsonTextReader);
 
                             stopwatch.Stop();
 
-                            Logger.Trace("JSON deserialization completed.");
-                            Logger.Debug("JSON deserialization took {0:D} ms.", stopwatch.ElapsedMilliseconds);
+                            Logger.Debug(CultureInfo.InvariantCulture, "API response deserialization took {0:D} ms.", stopwatch.ElapsedMilliseconds);
+                            Logger.Trace("API response deserialization completed.");
+                            Logger.Trace("API query completed.");
+
+                            return response;
                         }
                     }
-                }
-
-                if (response.Error != null)
-                {
-                    Logger.Error("API query failed: {0}", response.Error);
-
-                    return;
-                }
-
-                Logger.Trace("Availability check started.");
-
-                var isAvailable = response.Answer.Availabilities.Single(a => a.Reference == Configuration.Default.ServerSku).Zones.Any(a => a.Availability != "unknown" && a.Availability != "unavailable");
-
-                Logger.Trace("Availability check completed.");
-
-                if (isAvailable)
-                {
-                    Logger.Warn("Server available.");
-
-                    NotifyAvailability();
-                }
-                else
-                {
-                    Logger.Info("Server not available.");
                 }
             }
             finally
             {
                 httpResponseMessage?.Dispose();
             }
+        }
 
-            Logger.Trace("Callback completed.");
+        private static async Task<HttpResponseMessage> ExecuteApiCallAsync(HttpClient httpClient)
+        {
+            Logger.Trace("API call started.");
+
+            HttpResponseMessage httpResponseMessage;
+            Stopwatch stopwatch;
+
+            try
+            {
+                stopwatch = Stopwatch.StartNew();
+
+                httpResponseMessage = await httpClient.GetAsync(Configuration.Default.ApiEndpoint, CancellationSource.Token);
+
+                stopwatch.Stop();
+            }
+            catch (HttpRequestException exception)
+            {
+                var exceptionId = LogException(exception);
+
+                Logger.Error("An error occurred while executing the API call ({0}).", exceptionId);
+
+                return null;
+            }
+            catch (TaskCanceledException)
+            {
+                Logger.Info("The API call has been cancelled due to either a timeout or an application shutdown request.");
+
+                return null;
+            }
+
+            Logger.Debug(CultureInfo.InvariantCulture, "API HTTP call took {0:D} ms.", stopwatch.ElapsedMilliseconds);
+
+            if (httpResponseMessage.IsSuccessStatusCode)
+            {
+                Logger.Trace("API call completed.");
+
+                return httpResponseMessage;
+            }
+
+            Logger.Error("API call failed: {0}", httpResponseMessage.ReasonPhrase);
+
+            return null;
         }
 
         private static void OnDeserializationError(object sender, Newtonsoft.Json.Serialization.ErrorEventArgs e)
@@ -193,26 +200,37 @@
             Logger.Trace("JSON deserialization error handler completed.");
         }
 
+        private static void CheckAvailability(Response response)
+        {
+            Logger.Trace("Availability check started.");
+
+            if (response.Error != null)
+            {
+                Logger.Error("API returned an error: {0}", response.Error);
+                Logger.Trace("Availability check failed.");
+
+                return;
+            }
+
+            var isAvailable = response.Answer.Availabilities.Single(a => a.Reference == Configuration.Default.ServerSku).Zones.Any(a => a.Availability != "unknown" && a.Availability != "unavailable");
+
+            if (isAvailable)
+            {
+                Logger.Warn("Server available.");
+
+                NotifyAvailability();
+            }
+            else
+            {
+                Logger.Info("Server not available.");
+            }
+
+            Logger.Trace("Availability check completed.");
+        }
+
         private static void NotifyAvailability()
         {
             Logger.Trace("Availability notification started.");
-            Logger.Trace("Synchronization lock acquiring.");
-
-            lock (SynchronizationToken)
-            {
-                Logger.Trace("Synchronization lock acquired.");
-
-                if (dialogIsOpen)
-                {
-                    return;
-                }
-
-                dialogIsOpen = true;
-
-                Logger.Trace("Synchronization lock releasing.");
-            }
-
-            Logger.Trace("Synchronization lock released.");
 
             Task.Run(DisplayDialog);
 
@@ -222,6 +240,20 @@
         private static Task DisplayDialog()
         {
             Logger.Trace("Dialog display started.");
+
+            lock (SynchronizationToken)
+            {
+                if (dialogIsOpen)
+                {
+                    Logger.Trace("Dialog already displaying.");
+
+                    return Task.CompletedTask;
+                }
+
+                dialogIsOpen = true;
+            }
+
+            Logger.Trace("Opening dialog.");
 
             using (var form = new Form())
             {
@@ -236,18 +268,12 @@
             }
 
             Logger.Trace("User acknowledged dialog.");
-            Logger.Trace("Synchronization lock acquiring.");
 
             lock (SynchronizationToken)
             {
-                Logger.Trace("Synchronization lock acquired.");
-
                 dialogIsOpen = false;
-
-                Logger.Trace("Synchronization lock releasing.");
             }
 
-            Logger.Trace("Synchronization lock released.");
             Logger.Trace("Dialog display completed.");
 
             return Task.CompletedTask;
