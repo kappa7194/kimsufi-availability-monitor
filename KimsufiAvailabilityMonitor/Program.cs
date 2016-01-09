@@ -109,20 +109,33 @@
 
                 Logger.Trace("API response deserialization started.");
 
-                var serializer = new JsonSerializer();
-
-                serializer.Error += OnDeserializationError;
-
                 using (var stream = await httpResponseMessage.Content.ReadAsStreamAsync())
                 {
                     using (var streamReader = new StreamReader(stream))
                     {
                         using (var jsonTextReader = new JsonTextReader(streamReader))
                         {
-                            var stopwatch = Stopwatch.StartNew();
-                            var response = serializer.Deserialize<Response>(jsonTextReader);
+                            Response response;
+                            Stopwatch stopwatch;
 
-                            stopwatch.Stop();
+                            var serializer = new JsonSerializer();
+
+                            try
+                            {
+                                stopwatch = Stopwatch.StartNew();
+                                response = serializer.Deserialize<Response>(jsonTextReader);
+                                stopwatch.Stop();
+                            }
+                            catch (JsonReaderException exception)
+                            {
+                                var exceptionId = LogException(exception);
+
+                                Logger.Error("API response deserialization failed ({0}).", exceptionId);
+
+                                await LogJsonAsync(stream, exceptionId);
+
+                                return null;
+                            }
 
                             Logger.Debug(CultureInfo.InvariantCulture, "API response deserialization took {0:D} ms.", stopwatch.ElapsedMilliseconds);
                             Logger.Trace("API response deserialization completed.");
@@ -181,23 +194,6 @@
             Logger.Error("API call failed: {0}", httpResponseMessage.ReasonPhrase);
 
             return null;
-        }
-
-        private static void OnDeserializationError(object sender, Newtonsoft.Json.Serialization.ErrorEventArgs e)
-        {
-            Logger.Trace("JSON deserialization error handler started.");
-
-            if (e.CurrentObject != e.ErrorContext.OriginalObject)
-            {
-                Logger.Trace("Deserialization error is propagating, skipping handling.");
-
-                return;
-            }
-
-            var exceptionId = LogException(e.ErrorContext.Error);
-
-            Logger.Error("JSON deserialization failed ({0}).", exceptionId);
-            Logger.Trace("JSON deserialization error handler completed.");
         }
 
         private static void CheckAvailability(Response response)
@@ -321,6 +317,23 @@
             if (exception.InnerException != null)
             {
                 FormatException(stringBuilder, exception.InnerException);
+            }
+        }
+
+        private static async Task LogJsonAsync(Stream stream, string streamId)
+        {
+            if (!stream.CanSeek)
+            {
+                return;
+            }
+
+            stream.Seek(0, SeekOrigin.Begin);
+
+            var logPath = string.Format(CultureInfo.InvariantCulture, @"Logs\ApiResponse_{0}.json", streamId);
+
+            using (var fileStream = new FileStream(logPath, FileMode.CreateNew))
+            {
+                await stream.CopyToAsync(fileStream);
             }
         }
     }
